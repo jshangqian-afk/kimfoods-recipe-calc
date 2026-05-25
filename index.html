@@ -12,7 +12,8 @@
     <aside class="left">
       <div class="lhead">
         <h1>キムチ製造電卓</h1>
-        <button class="btn-link" id="openRecordsBtn" style="margin-left:auto;">記録一覧 ▸</button>
+        <button class="btn-link" id="openMasterBtn" style="margin-left:auto;">⚙ 管理</button>
+        <button class="btn-link" id="openRecordsBtn">記録一覧 ▸</button>
       </div>
       <div class="scroll">
         <div class="section-title">製品をえらぶ</div>
@@ -51,6 +52,60 @@
     </div>
     <div class="dbody" id="drawerBody">
       <div class="dstate">読み込み中…</div>
+    </div>
+  </aside>
+
+  <!-- マスター管理（製品の追加・削除）ドロワー -->
+  <div class="drawer-mask" id="masterMask"></div>
+  <aside class="drawer" id="masterDrawer">
+    <div class="dhead">
+      <h2>マスター管理</h2>
+      <button class="btn-ghost" id="closeMasterBtn">閉じる</button>
+    </div>
+    <div class="dbody">
+      <div class="section-title">製品を追加</div>
+      <div class="mform">
+        <label class="f-label">製品名</label>
+        <input type="text" id="np-name" class="f-input" placeholder="例: 中辛 特注" autocomplete="off">
+
+        <label class="f-label">区分</label>
+        <div class="seg" data-field="group">
+          <button type="button" data-v="main" class="active">メイン</button>
+          <button type="button" data-v="yamada">ヤマダ</button>
+        </div>
+
+        <label class="f-label">基準材料（標準倍率が決まります）</label>
+        <div class="seg" data-field="base">
+          <button type="button" data-v="hakusai" class="active">白菜</button>
+          <button type="button" data-v="daikon">大根</button>
+          <button type="button" data-v="changja">チャンジャ</button>
+        </div>
+
+        <label class="f-label">タレ種類</label>
+        <div class="seg" data-field="tareType">
+          <button type="button" data-v="A" class="active">Aタレ</button>
+          <button type="button" data-v="B">Bタレ</button>
+          <button type="button" data-v="C">Cタレ</button>
+        </div>
+
+        <label class="f-label">時間帯</label>
+        <div class="seg" data-field="timeSlot">
+          <button type="button" data-v="" class="active">なし</button>
+          <button type="button" data-v="午前">午前</button>
+          <button type="button" data-v="午後">午後</button>
+        </div>
+
+        <label class="f-label">追加材料</label>
+        <div class="chips" id="np-extras"></div>
+
+        <div class="f-label" style="margin-top:14px;">この設定でのレシピ（プレビュー）</div>
+        <div class="result-list" id="np-preview"></div>
+
+        <button class="btn-primary" id="addProductBtn" style="margin-top:14px;">この内容で製品を追加</button>
+      </div>
+
+      <div class="section-title" style="margin-top:26px;">登録済みの製品</div>
+      <div id="masterList"><div class="dstate">読み込み中…</div></div>
     </div>
   </aside>
 

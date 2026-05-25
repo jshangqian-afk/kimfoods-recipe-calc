@@ -19,10 +19,11 @@ const CONFIG = {
  * ========================================================= */
 const BASE_LABEL = { hakusai: "白菜", daikon: "大根", changja: "チャンジャ" };
 
-const MAIN_PRODUCTS = PRODUCTS.filter(p => p.group === "main").sort((a, b) => a.order - b.order);
-const YAMADA_PRODUCTS = PRODUCTS.filter(p => p.group === "yamada").sort((a, b) => a.order - b.order);
+// 製品マスタは実行時に GAS（products シート）から取得する。
+// recipes.js の PRODUCTS は初回シード兼フォールバック（係数 COEFFICIENTS は recipes.js が正本）。
+let productList = [];
 
-function findProduct(code) { return PRODUCTS.find(p => p.code === code) || null; }
+function findProduct(code) { return productList.find(p => p.code === code) || null; }
 function $(id) { return document.getElementById(id); }
 function pad(n, len) { return String(n).padStart(len, "0"); }
 
@@ -146,6 +147,16 @@ const api = {
 
   create(payload) { return this._post({ action: "create", record: payload }); },
   update(recordId, payload) { return this._post({ action: "update", record_id: recordId, record: payload }); },
+
+  async getProducts() {
+    const res = await fetch(`${CONFIG.GAS_URL}?action=products`, { method: "GET" });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "製品取得失敗");
+    return json.data;
+  },
+  addProduct(product) { return this._post({ action: "addProduct", product }); },
+  deleteProduct(code) { return this._post({ action: "deleteProduct", code }); },
+  seedProducts(products) { return this._post({ action: "seedProducts", products }); },
 };
 
 /* =========================================================
@@ -157,21 +168,43 @@ const state = {
   editingId: null // 編集中の record_id（null=新規）
 };
 
+// マスター管理: 基準材料ごとに選べる追加材料（calcRecipe の extras キーに対応）
+const EXTRA_OPTIONS = {
+  hakusai: [{ key: "daikara", label: "大辛パウダー(×17g/kg)" }, { key: "sugar", label: "砂糖(タレ×0.19)" }],
+  daikon:  [{ key: "sugar", label: "砂糖(タレ×0.19)" }],
+  changja: [{ key: "changjaDaikara", label: "大辛パウダー(×3g/kg)" }, { key: "sesameOil", label: "ごま油" }, { key: "sesame", label: "ごま" }],
+};
+// 追加フォームの現在の選択状態
+const newProduct = { group: "main", base: "hakusai", tareType: "A", timeSlot: null, extras: {} };
+
 /* =========================================================
  * 初期化
  * ========================================================= */
 startClock($("clock"));
-$("gridMain").innerHTML = MAIN_PRODUCTS.map(productButtonHTML).join("");
-$("gridYamada").innerHTML = YAMADA_PRODUCTS.map(productButtonHTML).join("");
 
-document.querySelectorAll(".product-btn").forEach(btn =>
-  btn.addEventListener("click", () => selectProduct(btn.dataset.code)));
+// 製品ボタンのクリックは委譲（再描画しても効く）
+function onProductGridClick(e) {
+  const btn = e.target.closest(".product-btn");
+  if (btn) selectProduct(btn.dataset.code);
+}
+$("gridMain").addEventListener("click", onProductGridClick);
+$("gridYamada").addEventListener("click", onProductGridClick);
 
 $("recBtn").addEventListener("click", onSubmit);
 $("cancelEditBtn").addEventListener("click", cancelEdit);
 $("openRecordsBtn").addEventListener("click", openRecords);
 $("closeRecordsBtn").addEventListener("click", closeRecords);
 $("drawerMask").addEventListener("click", closeRecords);
+
+// マスター管理
+$("openMasterBtn").addEventListener("click", openMaster);
+$("closeMasterBtn").addEventListener("click", closeMaster);
+$("masterMask").addEventListener("click", closeMaster);
+$("addProductBtn").addEventListener("click", onAddProduct);
+initMasterForm();
+
+// 製品マスタを GAS から読み込んでボタンを描画
+loadProducts();
 
 /* 右ペインの中身は最初の製品選択時に一度だけ構築 */
 let rightBuilt = false;
@@ -351,4 +384,167 @@ function cancelEdit() {
 function closeRecords() {
   $("drawer").classList.remove("show");
   $("drawerMask").classList.remove("show");
+}
+
+/* =========================================================
+ * 製品マスタ（GAS の products シート）
+ *  recipes.js の PRODUCTS は初回シード兼フォールバック。
+ * ========================================================= */
+async function loadProducts() {
+  if (!api.configured()) {
+    productList = PRODUCTS.slice(); // 未接続: recipes.js を読み取り表示
+    renderProductButtons();
+    return;
+  }
+  $("gridMain").innerHTML = `<div class="products-note">製品を読み込み中…</div>`;
+  $("gridYamada").innerHTML = "";
+  try {
+    let list = await api.getProducts();
+    if (!list.length) {             // 初回: recipes.js の製品を投入
+      await api.seedProducts(PRODUCTS);
+      list = await api.getProducts();
+    }
+    productList = list;
+    renderProductButtons();
+  } catch (e) {
+    productList = PRODUCTS.slice(); // フォールバック（暫定表示）
+    renderProductButtons();
+    showToast("製品をGASから読めず暫定表示中: " + e.message, true);
+  }
+}
+
+function renderProductButtons() {
+  const mains = productList.filter(p => p.group === "main").sort((a, b) => a.order - b.order);
+  const yamadas = productList.filter(p => p.group === "yamada").sort((a, b) => a.order - b.order);
+  $("gridMain").innerHTML = mains.length
+    ? mains.map(productButtonHTML).join("")
+    : `<div class="products-note">製品がありません。⚙管理から追加してください。</div>`;
+  $("gridYamada").innerHTML = yamadas.map(productButtonHTML).join("");
+  if (state.code) {
+    const btn = document.querySelector(`.product-btn[data-code="${state.code}"]`);
+    if (btn) btn.classList.add("selected");
+  }
+}
+
+/* ============ マスター管理ドロワー ============ */
+function openMaster() {
+  $("masterDrawer").classList.add("show");
+  $("masterMask").classList.add("show");
+  renderMasterList();
+  updatePreview();
+}
+function closeMaster() {
+  $("masterDrawer").classList.remove("show");
+  $("masterMask").classList.remove("show");
+}
+
+function initMasterForm() {
+  document.querySelectorAll("#masterDrawer .seg").forEach(seg => {
+    seg.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-v]");
+      if (!b) return;
+      seg.querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b));
+      const field = seg.dataset.field;
+      newProduct[field] = field === "timeSlot" ? (b.dataset.v || null) : b.dataset.v;
+      if (field === "base") { newProduct.extras = {}; renderExtras(); }
+      updatePreview();
+    });
+  });
+  $("np-name").addEventListener("input", updatePreview);
+  renderExtras();
+}
+
+function renderExtras() {
+  const opts = EXTRA_OPTIONS[newProduct.base] || [];
+  const box = $("np-extras");
+  if (!opts.length) {
+    box.innerHTML = `<span class="none">この基準材料に追加材料はありません（昆布は自動計算）。</span>`;
+    return;
+  }
+  box.innerHTML = opts.map(o =>
+    `<button type="button" class="chip${newProduct.extras[o.key] ? " on" : ""}" data-ex="${o.key}">${o.label}</button>`).join("");
+  box.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    const k = c.dataset.ex;
+    newProduct.extras[k] = !newProduct.extras[k];
+    c.classList.toggle("on", !!newProduct.extras[k]);
+    updatePreview();
+  }));
+}
+
+/* レシピ確認用のサンプルkg（基準材料で代表値を変える） */
+function previewKg() { return newProduct.base === "daikon" ? 40 : 20; }
+
+function updatePreview() {
+  const sample = previewKg();
+  const tmp = {
+    code: "_preview", name: $("np-name").value || "新製品", group: newProduct.group,
+    base: newProduct.base, tareType: newProduct.tareType, timeSlot: newProduct.timeSlot,
+    extras: { ...newProduct.extras }
+  };
+  const r = calcRecipe(tmp, sample);
+  const rows = recipeRows(r);
+  rows.unshift({ label: `（サンプル）${BASE_LABEL[newProduct.base]}`, value: `${sample} kg`, kind: "main" });
+  renderResultRows($("np-preview"), rows);
+}
+
+async function onAddProduct() {
+  const name = $("np-name").value.trim();
+  if (!name) { showToast("製品名を入力してください", true); return; }
+  if (!api.configured()) { showToast("GAS未接続のため追加できません", true); return; }
+  const product = {
+    name, group: newProduct.group, base: newProduct.base,
+    tareType: newProduct.tareType, timeSlot: newProduct.timeSlot, extras: { ...newProduct.extras }
+  };
+  const btn = $("addProductBtn");
+  btn.disabled = true;
+  try {
+    const added = await api.addProduct(product);
+    showToast(`製品を追加しました: ${added.name}`);
+    $("np-name").value = "";
+    await loadProducts();   // 計算画面のボタンを再描画
+    renderMasterList();     // 一覧更新
+    updatePreview();
+  } catch (e) {
+    showToast("追加に失敗: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const EXTRA_JA = { daikara: "大辛パウダー", changjaDaikara: "大辛パウダー", sesameOil: "ごま油", sesame: "ごま", sugar: "砂糖" };
+
+function renderMasterList() {
+  const box = $("masterList");
+  if (!productList.length) { box.innerHTML = `<div class="dstate">製品がありません。</div>`; return; }
+  const sorted = productList.slice().sort((a, b) => a.order - b.order);
+  box.innerHTML = sorted.map(p => {
+    const slot = p.timeSlot ? ` ・ ${p.timeSlot}` : "";
+    const ex = Object.keys(p.extras).filter(k => p.extras[k]).map(k => EXTRA_JA[k] || k);
+    const exLabel = ex.length ? " ・ " + ex.join("/") : "";
+    return `<div class="master-card">
+      <div class="mc-main">
+        <div class="mc-name">${p.name}</div>
+        <div class="mc-sub">${p.group === "yamada" ? "ヤマダ ・ " : ""}${BASE_LABEL[p.base]}基準 ・ ${p.tareType}タレ${slot}${exLabel}</div>
+      </div>
+      <button class="btn-del" data-del="${p.code}" data-name="${p.name}">削除</button>
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".btn-del").forEach(b => b.addEventListener("click", () => onDeleteProduct(b)));
+}
+
+function onDeleteProduct(btn) {
+  if (!btn.classList.contains("confirm")) { // 2タップ確認（誤操作防止）
+    btn.classList.add("confirm");
+    btn.textContent = "削除する？";
+    setTimeout(() => { btn.classList.remove("confirm"); btn.textContent = "削除"; }, 3000);
+    return;
+  }
+  const code = btn.dataset.del, name = btn.dataset.name;
+  btn.disabled = true;
+  api.deleteProduct(code).then(async () => {
+    showToast(`「${name}」を削除しました（過去の記録は保持）`);
+    if (state.code === code) state.code = null; // 選択中なら解除
+    await loadProducts();
+    renderMasterList();
+  }).catch(e => { showToast("削除に失敗: " + e.message, true); btn.disabled = false; });
 }

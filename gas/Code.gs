@@ -33,6 +33,14 @@ var EDITABLE = [
   "sesame_oil", "sesame"
 ];
 
+// 製品マスタ（実行時に追加・論理削除する。係数は recipes.js が正本のまま）
+var PRODUCTS_SHEET = "products";
+var PRODUCT_HEADERS = [
+  "code", "name", "order", "group", "base", "tare_type", "time_slot",
+  "ex_daikara", "ex_changja_daikara", "ex_sesame_oil", "ex_sesame", "ex_sugar",
+  "active"
+];
+
 /* ============ スプレッドシート / シート取得 ============ */
 function getSpreadsheet_() {
   // バインドスクリプトでは getActiveSpreadsheet() が対象シート（spreadsheets.currentonly で可）。
@@ -52,9 +60,137 @@ function getRecordsSheet_() {
   return sh;
 }
 
-/** 初回セットアップ: records シートとヘッダーを用意 */
+/** 初回セットアップ: records / products シートとヘッダーを用意 */
 function setup() {
   getRecordsSheet_();
+  getProductsSheet_();
+}
+
+/* ============ 製品マスタ（products シート） ============ */
+function getProductsSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(PRODUCTS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(PRODUCTS_SHEET);
+    sh.getRange(1, 1, 1, PRODUCT_HEADERS.length).setValues([PRODUCT_HEADERS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/* 有効(active)な製品を order 順で返す（recipes.js と同じ形に整形） */
+function listProducts_() {
+  var sh = getProductsSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var values = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
+  var headers = values[0];
+  var out = [];
+  for (var r = 1; r < values.length; r++) {
+    var obj = rowToProduct_(headers, values[r]);
+    if (obj.active) out.push(obj);
+  }
+  out.sort(function (a, b) { return a.order - b.order; });
+  return out;
+}
+
+/* 行配列 → 製品オブジェクト（フロント・recipes.js の shape） */
+function rowToProduct_(headers, row) {
+  var m = {};
+  for (var i = 0; i < headers.length; i++) m[String(headers[i])] = row[i];
+  return {
+    code: String(m.code),
+    name: String(m.name),
+    order: Number(m.order) || 0,
+    group: String(m.group || "main"),
+    base: String(m.base),
+    tareType: String(m.tare_type),
+    timeSlot: m.time_slot ? String(m.time_slot) : null,
+    extras: {
+      daikara: m.ex_daikara === true,
+      changjaDaikara: m.ex_changja_daikara === true,
+      sesameOil: m.ex_sesame_oil === true,
+      sesame: m.ex_sesame === true,
+      sugar: m.ex_sugar === true
+    },
+    active: m.active === true
+  };
+}
+
+/* 製品オブジェクト → 行配列（PRODUCT_HEADERS 順） */
+function productToRow_(map, p, order, active) {
+  var ex = p.extras || {};
+  var full = {
+    code: p.code, name: p.name, order: order, group: p.group || "main",
+    base: p.base, tare_type: p.tareType, time_slot: p.timeSlot || "",
+    ex_daikara: !!ex.daikara, ex_changja_daikara: !!ex.changjaDaikara,
+    ex_sesame_oil: !!ex.sesameOil, ex_sesame: !!ex.sesame, ex_sugar: !!ex.sugar,
+    active: active
+  };
+  var arr = [];
+  for (var i = 0; i < PRODUCT_HEADERS.length; i++) {
+    arr[map[PRODUCT_HEADERS[i]] - 1] = full[PRODUCT_HEADERS[i]];
+  }
+  return arr;
+}
+
+/* 製品を追加（code は未指定なら自動採番。order は末尾） */
+function addProduct_(p) {
+  if (!p || !p.name || !p.base || !p.tareType) throw new Error("name / base / tareType は必須です");
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var sh = getProductsSheet_();
+    var map = headerMap_(sh);
+    var last = sh.getLastRow();
+    var existing = last >= 2 ? sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues() : [];
+
+    // code 自動採番（未指定時）。既存 code と重複しないこと。
+    var code = p.code || ("cust_" + Utilities.getUuid().slice(0, 8));
+    var codeCol = map["code"] - 1, orderCol = map["order"] - 1;
+    var maxOrder = 0;
+    for (var i = 0; i < existing.length; i++) {
+      if (String(existing[i][codeCol]) === String(code)) throw new Error("製品コードが重複: " + code);
+      maxOrder = Math.max(maxOrder, Number(existing[i][orderCol]) || 0);
+    }
+    var order = (typeof p.order === "number") ? p.order : maxOrder + 1;
+
+    p.code = code;
+    sh.appendRow(productToRow_(map, p, order, true));
+    return rowToProduct_(PRODUCT_HEADERS, productToRow_(map, p, order, true));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* 論理削除: active を false に */
+function deleteProduct_(code) {
+  var sh = getProductsSheet_();
+  var map = headerMap_(sh);
+  var last = sh.getLastRow();
+  if (last < 2) throw new Error("製品なし");
+  var codes = sh.getRange(2, map["code"], last - 1, 1).getValues();
+  for (var i = 0; i < codes.length; i++) {
+    if (String(codes[i][0]) === String(code)) {
+      sh.getRange(i + 2, map["active"]).setValue(false);
+      return { code: code, deleted: true };
+    }
+  }
+  throw new Error("製品コードが見つかりません: " + code);
+}
+
+/* 初回シード: products が空のときだけ、渡された初期製品を投入（冪等） */
+function seedProducts_(products) {
+  var sh = getProductsSheet_();
+  if (sh.getLastRow() >= 2) return { seeded: 0, note: "既にデータあり。スキップ" };
+  var map = headerMap_(sh);
+  var rows = [];
+  for (var i = 0; i < products.length; i++) {
+    var p = products[i];
+    rows.push(productToRow_(map, p, (typeof p.order === "number" ? p.order : i + 1), true));
+  }
+  if (rows.length) sh.getRange(2, 1, rows.length, PRODUCT_HEADERS.length).setValues(rows);
+  return { seeded: rows.length };
 }
 
 /* ヘッダー名 → 列番号(1始まり) のマップ */
@@ -81,6 +217,9 @@ function doGet(e) {
     if (action === "list") {
       return json_({ ok: true, data: listRecords_(e.parameter.date) });
     }
+    if (action === "products") { // 有効な製品マスタ一覧
+      return json_({ ok: true, data: listProducts_() });
+    }
     return json_({ ok: false, error: "unknown action: " + action });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -95,6 +234,15 @@ function doPost(e) {
     }
     if (body.action === "update") {
       return json_({ ok: true, data: updateRecord_(body.record_id, body.record) });
+    }
+    if (body.action === "addProduct") {
+      return json_({ ok: true, data: addProduct_(body.product) });
+    }
+    if (body.action === "deleteProduct") { // 論理削除（active=false）
+      return json_({ ok: true, data: deleteProduct_(body.code) });
+    }
+    if (body.action === "seedProducts") { // 初回のみ recipes.js の初期製品を投入
+      return json_({ ok: true, data: seedProducts_(body.products) });
     }
     return json_({ ok: false, error: "unknown action: " + body.action });
   } catch (err) {
