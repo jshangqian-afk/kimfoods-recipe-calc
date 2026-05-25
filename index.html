@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>キムチ製造電卓</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- 左ペイン: ①製品選択 -->
+    <aside class="left">
+      <div class="lhead">
+        <h1>キムチ製造電卓</h1>
+        <button class="btn-link" id="openRecordsBtn" style="margin-left:auto;">記録一覧 ▸</button>
+      </div>
+      <div class="scroll">
+        <div class="section-title">製品をえらぶ</div>
+        <div class="grid-main" id="gridMain"></div>
+        <div class="yamada-label"><span>ヤマダ</span><div class="line"></div></div>
+        <div class="grid-yamada" id="gridYamada"></div>
+      </div>
+    </aside>
+
+    <!-- 右ペイン: ②キロ数入力 / ③計算結果 / ④記録 -->
+    <main class="right">
+      <div class="rhead">
+        <span class="name" id="selName">製品を選択してください</span>
+        <span class="tare-chip" id="selTare" style="display:none;"></span>
+        <span class="clock" id="clock"></span>
+      </div>
+
+      <div class="body" id="rightBody">
+        <div class="empty-right">左の製品ボタンをタップすると、ここに入力テンキーと計算結果が出ます。</div>
+      </div>
+
+      <div class="rfoot">
+        <button class="btn-ghost" id="cancelEditBtn" style="display:none;">キャンセル</button>
+        <button class="btn-primary" id="recBtn" disabled>この内容で記録する</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ⑤記録一覧 / 編集ドロワー -->
+  <div class="drawer-mask" id="drawerMask"></div>
+  <aside class="drawer" id="drawer">
+    <div class="dhead">
+      <h2>記録一覧</h2>
+      <span class="rc-sub" id="drawerDate"></span>
+      <button class="btn-ghost" id="closeRecordsBtn">閉じる</button>
+    </div>
+    <div class="dbody" id="drawerBody">
+      <div class="dstate">読み込み中…</div>
+    </div>
+  </aside>
+
+  <!-- 配合の正本（係数はここだけ。フロント・GAS 共用） -->
+  <script src="recipes.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

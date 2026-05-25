@@ -1,0 +1,354 @@
+/**
+ * app.js — キムチ製造電卓 画面制御（C案 2ペイン）
+ *
+ * 配合・計算は recipes.js が正本（COEFFICIENTS / PRODUCTS / calcRecipe / round）。
+ * 係数はこのファイルに書かない。表示と記録は同じ calcRecipe の結果を使う（UI = 記録内容）。
+ * 記録の永続化は GAS 経由でスプレッドシートへ（localStorage は使わない）。
+ */
+
+/* =========================================================
+ * 設定（デプロイ後にここだけ書き換える）
+ * ========================================================= */
+const CONFIG = {
+  // GAS WebApp のデプロイURL（/exec で終わるもの）。未設定の間はUI確認のみ可。
+  GAS_URL: "https://script.google.com/macros/s/AKfycbySyCECxveTMIaje2o8V27bva7SDhqzdGoW2tmL5-N61yQMtbSJ1pdQlcH0nwy9CDb7/exec",
+};
+
+/* =========================================================
+ * 共通ヘルパー
+ * ========================================================= */
+const BASE_LABEL = { hakusai: "白菜", daikon: "大根", changja: "チャンジャ" };
+
+const MAIN_PRODUCTS = PRODUCTS.filter(p => p.group === "main").sort((a, b) => a.order - b.order);
+const YAMADA_PRODUCTS = PRODUCTS.filter(p => p.group === "yamada").sort((a, b) => a.order - b.order);
+
+function findProduct(code) { return PRODUCTS.find(p => p.code === code) || null; }
+function $(id) { return document.getElementById(id); }
+function pad(n, len) { return String(n).padStart(len, "0"); }
+
+function productButtonHTML(p) {
+  const slot = p.timeSlot ? ` ・ ${p.timeSlot}` : "";
+  return `<button class="product-btn" data-code="${p.code}">
+    <span class="pb-name">${p.name}</span>
+    <span class="tag">${BASE_LABEL[p.base]}基準 ・ ${p.tareType}タレ${slot}</span>
+  </button>`;
+}
+
+/* calcRecipe の戻り値 → 表示用の行（kind: tare/main/sub/guide） */
+function recipeRows(r) {
+  const rows = [];
+  rows.push({ label: `${r.tareType}タレ`, value: `${r.tareKg} kg`, kind: "tare" });
+  if (r.daikonKg != null) rows.push({ label: "大根", value: `${r.daikonKg} kg`, kind: "main" });
+  if (r.ninjinKg != null) rows.push({ label: "人参", value: `${r.ninjinKg} kg`, kind: "main" });
+  if (r.niraKg != null)   rows.push({ label: "ニラ", value: `${r.niraKg} kg`, kind: "main" });
+  if (r.daikaraPowderG != null) rows.push({ label: "大辛パウダー", value: `${r.daikaraPowderG} g`, kind: "sub" });
+  if (r.sugarKg != null)  rows.push({ label: "砂糖", value: `${r.sugarKg} kg`, kind: "sub" });
+  if (r.konbu)     rows.push({ label: "昆布", value: r.konbu, kind: "guide" });
+  if (r.sesameOil) rows.push({ label: "ごま油", value: r.sesameOil, kind: "guide" });
+  if (r.sesame)    rows.push({ label: "ごま", value: r.sesame, kind: "guide" });
+  return rows;
+}
+function renderResultRows(container, rows) {
+  container.innerHTML = rows.map(r =>
+    `<div class="result-row kind-${r.kind}"><span class="label">${r.label}</span><span class="value">${r.value}</span></div>`
+  ).join("");
+}
+
+/* calcRecipe の結果 → records 列にマッピング（SPREADSHEET.md の列名に対応） */
+function buildRecordPayload(product, result) {
+  return {
+    date: todayYmdSlash(),                 // YYYY/MM/DD（GAS 側で日付型保存）
+    product_name: product.name,
+    product_code: product.code,
+    time_slot: product.timeSlot || "",
+    base_material: BASE_LABEL[product.base],
+    base_kg: result.baseKg,
+    tare_type: result.tareType,
+    tare_kg: result.tareKg,
+    daikon_kg: result.daikonKg,
+    ninjin_kg: result.ninjinKg,
+    nira_kg: result.niraKg,
+    konbu: result.konbu,
+    daikara_powder_g: result.daikaraPowderG,
+    sugar_kg: result.sugarKg,
+    sesame_oil: result.sesameOil,
+    sesame: result.sesame,
+  };
+}
+
+function todayYmdSlash() {
+  const d = new Date();
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1, 2)}/${pad(d.getDate(), 2)}`;
+}
+
+function startClock(el) {
+  const tick = () => {
+    const d = new Date();
+    el.textContent = `${d.getFullYear()}/${pad(d.getMonth() + 1, 2)}/${pad(d.getDate(), 2)}  ${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}`;
+  };
+  tick();
+  setInterval(tick, 10000);
+}
+
+let _toastTimer;
+function showToast(msg, isError) {
+  let t = document.querySelector(".toast");
+  if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
+  t.className = "toast show" + (isError ? " error" : "");
+  t.textContent = msg;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => (t.className = "toast"), 3200);
+}
+
+/* カスタムテンキー */
+function buildNumpad(container, getVal, setVal, onChange) {
+  const keys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"];
+  container.classList.add("numpad");
+  container.innerHTML = keys.map(k =>
+    `<button type="button" data-k="${k}"${k === "⌫" ? ' class="np-back"' : ""}>${k}</button>`).join("");
+  container.addEventListener("click", (e) => {
+    const k = e.target.dataset.k;
+    if (!k) return;
+    let v = getVal();
+    if (k === "⌫") v = v.slice(0, -1);
+    else if (k === ".") { if (!v.includes(".")) v = (v || "0") + "."; }
+    else { if (v === "0") v = k; else v = v + k; if (v.replace(".", "").length > 6) return; }
+    setVal(v);
+    onChange();
+  });
+}
+
+/* =========================================================
+ * GAS API（text/plain で送りプリフライト回避。GAS 側で JSON.parse）
+ * ========================================================= */
+const api = {
+  configured() { return !!CONFIG.GAS_URL; },
+
+  async list(date) {
+    // date 未指定なら GAS が本日(JST)を返す（営業日はサーバ基準）
+    const url = `${CONFIG.GAS_URL}?action=list` + (date ? `&date=${encodeURIComponent(date)}` : "");
+    const res = await fetch(url, { method: "GET" });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "list失敗");
+    return json.data;
+  },
+
+  async _post(body) {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "保存失敗");
+    return json.data;
+  },
+
+  create(payload) { return this._post({ action: "create", record: payload }); },
+  update(recordId, payload) { return this._post({ action: "update", record_id: recordId, record: payload }); },
+};
+
+/* =========================================================
+ * 状態
+ * ========================================================= */
+const state = {
+  code: null,     // 選択中の製品コード
+  input: "",      // kg 入力文字列
+  editingId: null // 編集中の record_id（null=新規）
+};
+
+/* =========================================================
+ * 初期化
+ * ========================================================= */
+startClock($("clock"));
+$("gridMain").innerHTML = MAIN_PRODUCTS.map(productButtonHTML).join("");
+$("gridYamada").innerHTML = YAMADA_PRODUCTS.map(productButtonHTML).join("");
+
+document.querySelectorAll(".product-btn").forEach(btn =>
+  btn.addEventListener("click", () => selectProduct(btn.dataset.code)));
+
+$("recBtn").addEventListener("click", onSubmit);
+$("cancelEditBtn").addEventListener("click", cancelEdit);
+$("openRecordsBtn").addEventListener("click", openRecords);
+$("closeRecordsBtn").addEventListener("click", closeRecords);
+$("drawerMask").addEventListener("click", closeRecords);
+
+/* 右ペインの中身は最初の製品選択時に一度だけ構築 */
+let rightBuilt = false;
+function buildRight() {
+  $("rightBody").innerHTML = `
+    <div class="pane-col">
+      <div class="edit-banner" id="editBanner">
+        <div>
+          <div class="em-text" id="emText"></div>
+          <div class="em-id" id="emId"></div>
+        </div>
+        <button class="btn-link" id="emCancel">編集をやめる</button>
+      </div>
+      <div class="section-title" id="baseTitle"></div>
+      <div class="kg-display">
+        <span class="base-label" id="baseLabel"></span>
+        <span class="num placeholder" id="kgNum">0</span>
+        <span class="unit">kg</span>
+      </div>
+      <div style="margin-top:14px;" id="numpad"></div>
+    </div>
+    <div class="pane-col">
+      <div class="section-title">計算結果（タレ・副材料）</div>
+      <div class="result-list" id="resultList"></div>
+    </div>`;
+  buildNumpad($("numpad"), () => state.input, (v) => { state.input = v; }, recalc);
+  $("emCancel").addEventListener("click", cancelEdit);
+  rightBuilt = true;
+}
+
+/* =========================================================
+ * ①②③ 製品選択 → 入力 → 計算
+ * ========================================================= */
+function selectProduct(code) {
+  state.code = code;
+  state.input = "";
+  document.querySelectorAll(".product-btn").forEach(b =>
+    b.classList.toggle("selected", b.dataset.code === code));
+  if (!rightBuilt) buildRight();
+
+  const p = findProduct(code);
+  $("selName").textContent = p.name + (p.timeSlot ? `（${p.timeSlot}）` : "");
+  const chip = $("selTare");
+  chip.style.display = "inline-flex";
+  chip.textContent = p.tareType + "タレ";
+  chip.className = "tare-chip tare-" + p.tareType;
+  $("baseTitle").textContent = BASE_LABEL[p.base] + "のキロ数を入力";
+  $("baseLabel").textContent = BASE_LABEL[p.base];
+  recalc();
+}
+
+/* 現在の計算結果（表示・記録の両方でこれを使う） */
+function currentResult() {
+  const p = findProduct(state.code);
+  if (!p) return null;
+  return calcRecipe(p, parseFloat(state.input) || 0);
+}
+
+function recalc() {
+  const p = findProduct(state.code);
+  if (!p) return;
+  const kgNum = $("kgNum");
+  kgNum.textContent = state.input || "0";
+  kgNum.classList.toggle("placeholder", !state.input);
+
+  const r = calcRecipe(p, parseFloat(state.input) || 0);
+  renderResultRows($("resultList"), recipeRows(r));
+  $("recBtn").disabled = !(r.baseKg > 0);
+}
+
+/* =========================================================
+ * ④ 記録保存 / 更新
+ * ========================================================= */
+async function onSubmit() {
+  const p = findProduct(state.code);
+  const result = currentResult();
+  if (!p || !result || !(result.baseKg > 0)) return;
+
+  if (!api.configured()) {
+    showToast("GAS未接続です。app.js の CONFIG.GAS_URL を設定してください。", true);
+    return;
+  }
+
+  const payload = buildRecordPayload(p, result);
+  const btn = $("recBtn");
+  btn.disabled = true;
+  try {
+    if (state.editingId) {
+      const rec = await api.update(state.editingId, payload);
+      showToast(`更新しました  ${rec.product_name} ${rec.batch_no}回目`);
+      cancelEdit();
+    } else {
+      const rec = await api.create(payload);
+      const slot = rec.time_slot ? `${rec.time_slot} ` : "";
+      showToast(`記録しました  ${rec.product_name} ${slot}${rec.batch_no}回目 / ${rec.record_id}`);
+      state.input = "";
+      recalc();
+    }
+  } catch (e) {
+    showToast("保存に失敗しました: " + e.message, true);
+    btn.disabled = false;
+  }
+}
+
+/* =========================================================
+ * ⑤ 記録一覧 / 編集
+ * ========================================================= */
+async function openRecords() {
+  $("drawer").classList.add("show");
+  $("drawerMask").classList.add("show");
+  $("drawerDate").textContent = "";
+  const body = $("drawerBody");
+
+  if (!api.configured()) {
+    body.innerHTML = `<div class="dstate">GAS未接続です。<br>app.js の <b>CONFIG.GAS_URL</b> を設定すると、ここに本日の記録が表示されます。</div>`;
+    return;
+  }
+  body.innerHTML = `<div class="dstate">読み込み中…</div>`;
+  try {
+    const records = await api.list();           // 本日(JST)の記録
+    $("drawerDate").textContent = records.length ? records[0].date : "本日";
+    renderRecords(records);
+  } catch (e) {
+    body.innerHTML = `<div class="dstate">読み込みに失敗しました。<br>${e.message}</div>`;
+  }
+}
+
+function renderRecords(records) {
+  const body = $("drawerBody");
+  if (!records.length) {
+    body.innerHTML = `<div class="dstate">本日の記録はまだありません。</div>`;
+    return;
+  }
+  body.innerHTML = records.map(r => {
+    const slot = r.time_slot ? `${r.time_slot} ・ ` : "";
+    return `<div class="rec-card">
+      <div class="rc-main">
+        <div class="rc-title">${r.product_name} <span style="font-weight:600;color:var(--muted);">${r.batch_no}回目</span></div>
+        <div class="rc-sub">${slot}${r.base_material} ${r.base_kg}kg ・ ${r.tare_type}タレ ${r.tare_kg}kg<br>${r.record_id}</div>
+      </div>
+      <div class="rc-kg">${r.base_kg}<span style="font-size:13px;color:var(--muted);">kg</span></div>
+      <button class="btn-ghost" data-edit="${r.record_id}" data-code="${r.product_code}" data-kg="${r.base_kg}">編集</button>
+    </div>`;
+  }).join("");
+
+  body.querySelectorAll("[data-edit]").forEach(btn =>
+    btn.addEventListener("click", () => startEdit(btn.dataset.edit, btn.dataset.code, btn.dataset.kg)));
+}
+
+function startEdit(recordId, code, kg) {
+  selectProduct(code);
+  state.editingId = recordId;
+  state.input = String(kg);
+  recalc();
+  const p = findProduct(code);
+  $("editBanner").classList.add("show");
+  $("emText").textContent = `編集中: ${p.name}`;
+  $("emId").textContent = recordId;
+  const btn = $("recBtn");
+  btn.textContent = "更新する";
+  btn.classList.add("btn-update");
+  $("cancelEditBtn").style.display = "inline-block";
+  closeRecords();
+}
+
+function cancelEdit() {
+  state.editingId = null;
+  if (rightBuilt) $("editBanner").classList.remove("show");
+  const btn = $("recBtn");
+  btn.textContent = "この内容で記録する";
+  btn.classList.remove("btn-update");
+  $("cancelEditBtn").style.display = "none";
+  state.input = "";
+  if (state.code) recalc();
+}
+
+function closeRecords() {
+  $("drawer").classList.remove("show");
+  $("drawerMask").classList.remove("show");
+}

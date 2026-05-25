@@ -1,0 +1,14 @@
+# UIプロトタイプ（実装前の確認用・本番には含めない。ローカルにのみ保持）
+proto-*.html
+proto-common.*
+prototypes.html
+
+# OS / エディタ
+.DS_Store
+*.swp
+
+# 依存（使用しない想定だが念のため）
+node_modules/
+
+# clasp 認証情報は ~/.clasprc.json にあり、リポジトリには含めない
+.clasprc.json
