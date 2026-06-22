@@ -20,6 +20,7 @@ assert.equal(calcRecipe({ ...configuredProduct, contentG: null }, 100).plannedUn
 
 const app = fs.readFileSync(path.join(__dirname, "../app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "../style.css"), "utf8");
 const ids = [...app.matchAll(/\$\("([^"]+)"\)/g)].map(match => match[1]);
 const combined = html + "\n" + app;
 const missing = [...new Set(ids)].filter(id => !combined.includes(`id="${id}"`));
@@ -87,5 +88,11 @@ const migration = gasContext.migrateYamadaProducts_();
 assert.equal(migration.migrated, 4);
 assert.equal(deactivated.length, 2);
 assert.equal(appended.length, 4);
+
+assert.match(html, /viewport-fit=cover/);
+assert.match(css, /height: 100dvh/);
+assert.match(css, /safe-area-inset-bottom/);
+assert.match(css, /\.btn-delete-record \{ min-height: 44px/);
+assert.match(css, /\.master-card \.content-edit button \{ min-height: 44px/);
 
 console.log(`Smoke tests passed (${cases.length} formulas, ${new Set(ids).size} DOM references).`);
