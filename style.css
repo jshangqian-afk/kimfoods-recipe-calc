@@ -63,6 +63,30 @@ h1, h2, h3 { font-weight: 700; }
 .yamada-label span { font-size: 13px; font-weight: 700; color: var(--muted); }
 .yamada-label .line { flex: 1; height: 1px; background: var(--line); }
 
+/* ============ 今日の白菜予定 / 残量 ============ */
+.material-plan { background: #f8fafc; border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 18px; }
+.barrel-row { display: grid; grid-template-columns: 1fr 42px 38px 42px; gap: 7px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.barrel-row > div { display: flex; flex-direction: column; }
+.barrel-row b { font-size: 15px; }
+.barrel-row small { font-size: 11px; color: var(--muted); }
+.barrel-row button { height: 38px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--primary-dark); font-size: 22px; font-weight: 700; }
+.barrel-row > span { text-align: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.previous-row { display: grid; grid-template-columns: 1fr 100px 24px; gap: 7px; align-items: center; padding: 10px 0; font-size: 14px; font-weight: 700; }
+.previous-row input { min-width: 0; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font-size: 18px; text-align: right; }
+.plan-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 2px; border-top: 1px solid var(--line); }
+.plan-total span { color: var(--muted); font-size: 14px; }
+.plan-total strong { font-size: 24px; color: var(--primary-dark); }
+.btn-plan-save { width: 100%; height: 46px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 16px; font-weight: 700; }
+.btn-plan-save:disabled { background: #cbd5e1; }
+.remaining-card { margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+.remaining-card > div { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 13px; border-bottom: 1px solid var(--line); }
+.remaining-card > div:last-child { border: 0; }
+.remaining-card span { color: var(--muted); font-size: 13px; }
+.remaining-card b { font-size: 16px; }
+.remaining-card .remaining-main { background: var(--primary-soft); }
+.remaining-card strong { font-size: 25px; color: var(--primary-dark); }
+.remaining-card strong.negative { color: var(--danger); }
+
 .product-btn {
   min-height: 70px; border-radius: var(--radius); background: var(--card);
   border: 2px solid var(--line); color: var(--text);
@@ -113,6 +137,9 @@ h1, h2, h3 { font-weight: 700; }
 .result-row.kind-tare { background: #f8fafc; }
 .result-row.kind-tare .value { color: var(--primary-dark); }
 .result-row.kind-guide .value { font-size: 16px; font-weight: 600; color: var(--muted); }
+.result-row.kind-planned { background: #ecfdf5; }
+.result-row.kind-planned .label { color: #047857; font-weight: 700; }
+.result-row.kind-planned .value { color: #047857; }
 
 /* ============ ボタン ============ */
 .btn-primary { background: var(--primary); color: #fff; border-radius: 14px; height: 60px; font-size: 20px; font-weight: 700; }
@@ -204,6 +231,9 @@ h1, h2, h3 { font-weight: 700; }
 .master-card .mc-main { flex: 1; min-width: 0; }
 .master-card .mc-name { font-size: 16px; font-weight: 700; }
 .master-card .mc-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.master-card .content-edit { display: flex; align-items: center; gap: 5px; margin-top: 8px; }
+.master-card .content-edit input { width: 86px; height: 36px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; font-size: 16px; text-align: right; }
+.master-card .content-edit button { height: 36px; padding: 0 10px; border-radius: 9px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; }
 .master-card .btn-del {
   height: 40px; padding: 0 14px; border-radius: 10px; background: var(--danger-soft);
   color: var(--danger); border: 1px solid #fecaca; font-size: 14px; font-weight: 700;

@@ -29,8 +29,9 @@
 | 16 | sugar_kg | 数値 | 砂糖(kg) ※ヤマダ | 0.95 |
 | 17 | sesame_oil | 文字列 | ごま油（目安表記） ※チャンジャ | 大さじ 3（目安） |
 | 18 | sesame | 文字列 | ごま（目安表記） ※チャンジャ | 大さじ 2（目安） |
-| 19 | created_at | 日時 | 記録日時 | 2026/05/25 10:32:11 |
-| 20 | updated_at | 日時 | 最終更新日時 | 2026/05/25 10:35:40 |
+| 19 | planned_units | 整数 | 原料量と商品内容量から求めた予定数（切り捨て） | 730 |
+| 20 | created_at | 日時 | 記録日時 | 2026/05/25 10:32:11 |
+| 21 | updated_at | 日時 | 最終更新日時 | 2026/05/25 10:35:40 |
 
 - 製品で使わない材料列は空欄。
 - 目安系（konbu / sesame_oil / sesame）は文字列のまま保存（重量化の方針は未確定）。
@@ -39,8 +40,28 @@
 ### ヘッダー行（1行目にこの順で記載）
 
 ```
-record_id	date	product_name	product_code	time_slot	batch_no	base_material	base_kg	tare_type	tare_kg	daikon_kg	ninjin_kg	nira_kg	konbu	daikara_powder_g	sugar_kg	sesame_oil	sesame	created_at	updated_at
+record_id	date	product_name	product_code	time_slot	batch_no	base_material	base_kg	tare_type	tare_kg	daikon_kg	ninjin_kg	nira_kg	konbu	daikara_powder_g	sugar_kg	sesame_oil	sesame	planned_units	created_at	updated_at
 ```
+
+---
+
+## `products` 追加列
+
+`content_g` に商品1個あたりの内容量（g）を保存する。既存シートにはGASが不足列を自動追加する。
+
+## `daily_plans`（日別白菜予定）
+
+| 列名 | 説明 |
+|---|---|
+| date | 対象日 |
+| large_count | 大樽数（210kg/樽） |
+| small_count | 小樽数（90kg/樽） |
+| hundred_count | 100樽数（35kg/樽） |
+| previous_kg | 昨日の残り（kg） |
+| planned_kg | 上記の予定合計（kg） |
+| updated_at | 更新日時 |
+
+本日の使用量は `records` の同日・`base_material=白菜` の `base_kg` 合計から都度算出する。
 
 ---
 
