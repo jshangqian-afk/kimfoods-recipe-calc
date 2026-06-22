@@ -86,11 +86,17 @@ const PRODUCTS = [
     base: "hakusai", tareType: "A", timeSlot: "午後", extras: {} },
 
   // --- ヤマダ（別枠） ---
-  { code: "yamada_hakusai", name: "ヤマダ白菜", order: 10, group: "yamada",
-    base: "hakusai", tareType: "A", timeSlot: null, extras: { sugar: true } },
+  { code: "yamada_hakusai_350", name: "ヤマダ白菜 350g", order: 10, group: "yamada",
+    base: "hakusai", tareType: "A", timeSlot: null, contentG: 350, extras: { sugar: true } },
 
-  { code: "yamada_daikon", name: "ヤマダ大根", order: 11, group: "yamada",
-    base: "daikon",  tareType: "A", timeSlot: null, extras: { sugar: true } },
+  { code: "yamada_hakusai_200", name: "ヤマダ白菜 200g", order: 11, group: "yamada",
+    base: "hakusai", tareType: "A", timeSlot: null, contentG: 200, extras: { sugar: true } },
+
+  { code: "yamada_daikon_350", name: "ヤマダ大根 350g", order: 12, group: "yamada",
+    base: "daikon",  tareType: "A", timeSlot: null, contentG: 350, extras: { sugar: true } },
+
+  { code: "yamada_daikon_200", name: "ヤマダ大根 200g", order: 13, group: "yamada",
+    base: "daikon",  tareType: "A", timeSlot: null, contentG: 200, extras: { sugar: true } },
 ];
 
 /* =========================================================
@@ -119,6 +125,7 @@ function calcRecipe(product, baseKg) {
     name: product.name,
     base: product.base,
     baseKg: kg,
+    contentG: Number(product.contentG) || null,
     tareType: product.tareType,
     tareKg: 0,
     daikonKg: null,

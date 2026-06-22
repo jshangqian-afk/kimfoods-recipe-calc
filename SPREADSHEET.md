@@ -49,6 +49,7 @@ record_id	date	product_name	product_code	time_slot	batch_no	base_material	base_k
 ## `products` 追加列
 
 `content_g` に商品1個あたりの内容量（g）を保存する。既存シートにはGASが不足列を自動追加する。
+ヤマダ白菜・大根はそれぞれ350g/200gの商品コードを分け、旧2商品は過去記録を保持したまま非表示にする。
 
 ## `daily_plans`（日別白菜予定）
 

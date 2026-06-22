@@ -225,6 +225,43 @@ function updateProductContent_(code, contentG) {
   throw new Error("製品コードが見つかりません: " + code);
 }
 
+/* 既存ヤマダ2商品を非表示にし、350g/200gの4商品へ冪等移行する。 */
+function migrateYamadaProducts_() {
+  var variants = [
+    { code: "yamada_hakusai_350", name: "ヤマダ白菜 350g", order: 10, group: "yamada", base: "hakusai", tareType: "A", timeSlot: null, contentG: 350, extras: { sugar: true } },
+    { code: "yamada_hakusai_200", name: "ヤマダ白菜 200g", order: 11, group: "yamada", base: "hakusai", tareType: "A", timeSlot: null, contentG: 200, extras: { sugar: true } },
+    { code: "yamada_daikon_350", name: "ヤマダ大根 350g", order: 12, group: "yamada", base: "daikon", tareType: "A", timeSlot: null, contentG: 350, extras: { sugar: true } },
+    { code: "yamada_daikon_200", name: "ヤマダ大根 200g", order: 13, group: "yamada", base: "daikon", tareType: "A", timeSlot: null, contentG: 200, extras: { sugar: true } }
+  ];
+  var oldCodes = { yamada_hakusai: true, yamada_daikon: true };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var sh = getProductsSheet_();
+    var map = headerMap_(sh);
+    var last = sh.getLastRow();
+    var codeRows = {};
+    if (last >= 2) {
+      var codes = sh.getRange(2, map["code"], last - 1, 1).getValues();
+      for (var i = 0; i < codes.length; i++) codeRows[String(codes[i][0])] = i + 2;
+    }
+    Object.keys(oldCodes).forEach(function (code) {
+      if (codeRows[code]) sh.getRange(codeRows[code], map["active"]).setValue(false);
+    });
+    variants.forEach(function (p) {
+      var row = productToRow_(map, p, p.order, true);
+      if (codeRows[p.code]) {
+        sh.getRange(codeRows[p.code], 1, 1, sh.getLastColumn()).setValues([row]);
+      } else {
+        sh.appendRow(row);
+      }
+    });
+    return { migrated: variants.length, products: listProducts_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* 初回シード: products が空のときだけ、渡された初期製品を投入（冪等） */
 function seedProducts_(products) {
   var sh = getProductsSheet_();
@@ -298,6 +335,9 @@ function doPost(e) {
     }
     if (body.action === "updateProductContent") {
       return json_({ ok: true, data: updateProductContent_(body.code, body.content_g) });
+    }
+    if (body.action === "migrateYamadaProducts") {
+      return json_({ ok: true, data: migrateYamadaProducts_() });
     }
     if (body.action === "savePlan") {
       return json_({ ok: true, data: saveDailyPlan_(body.plan) });
