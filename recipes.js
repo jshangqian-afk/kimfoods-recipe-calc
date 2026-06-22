@@ -12,6 +12,12 @@
  * 共通係数（基準材料に対する倍率）
  * ========================================================= */
 const COEFFICIENTS = {
+  // 原料kgから製品重量へ換算する歩留まり
+  yield_multiplier: {
+    hakusai: 1.46,
+    daikon: 1.1,
+    changja: 1.57,
+  },
   // 白菜基準
   hakusai: {
     tare:   0.25, // タレ = 白菜kg × 0.25
@@ -98,6 +104,14 @@ function round(n, digits) {
   return Math.round(n * p) / p;
 }
 
+function calcPlannedUnits(product, baseKg) {
+  const kg = parseFloat(baseKg) || 0;
+  const contentG = Number(product && product.contentG) || 0;
+  const multiplier = product && COEFFICIENTS.yield_multiplier[product.base];
+  if (!(kg > 0) || !(contentG > 0) || !multiplier) return null;
+  return Math.floor((kg * multiplier) / (contentG / 1000));
+}
+
 function calcRecipe(product, baseKg) {
   const kg = parseFloat(baseKg) || 0;
   const result = {
@@ -115,6 +129,7 @@ function calcRecipe(product, baseKg) {
     sugarKg: null,
     sesameOil: null,        // 目安（大さじ）
     sesame: null,           // 目安（大さじ）
+    plannedUnits: calcPlannedUnits(product, kg),
   };
 
   if (product.base === "hakusai") {
@@ -158,5 +173,5 @@ function calcRecipe(product, baseKg) {
 
 /* ブラウザ / GAS 双方で使えるようにエクスポート */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { COEFFICIENTS, PRODUCTS, calcRecipe, round };
+  module.exports = { COEFFICIENTS, PRODUCTS, calcRecipe, calcPlannedUnits, round };
 }

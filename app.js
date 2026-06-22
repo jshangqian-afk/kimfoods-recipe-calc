@@ -47,6 +47,11 @@ function recipeRows(r) {
   if (r.konbu)     rows.push({ label: "昆布", value: r.konbu, kind: "guide" });
   if (r.sesameOil) rows.push({ label: "ごま油", value: r.sesameOil, kind: "guide" });
   if (r.sesame)    rows.push({ label: "ごま", value: r.sesame, kind: "guide" });
+  rows.push({
+    label: "予定数",
+    value: r.plannedUnits == null ? "内容量を設定してください" : `${r.plannedUnits} 個`,
+    kind: "planned"
+  });
   return rows;
 }
 function renderResultRows(container, rows) {
@@ -74,6 +79,7 @@ function buildRecordPayload(product, result) {
     sugar_kg: result.sugarKg,
     sesame_oil: result.sesameOil,
     sesame: result.sesame,
+    planned_units: result.plannedUnits,
   };
 }
 
@@ -157,6 +163,14 @@ const api = {
   addProduct(product) { return this._post({ action: "addProduct", product }); },
   deleteProduct(code) { return this._post({ action: "deleteProduct", code }); },
   seedProducts(products) { return this._post({ action: "seedProducts", products }); },
+  updateProductContent(code, contentG) { return this._post({ action: "updateProductContent", code, content_g: contentG }); },
+  async getPlan() {
+    const res = await fetch(`${CONFIG.GAS_URL}?action=plan`, { method: "GET" });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "白菜予定取得失敗");
+    return json.data;
+  },
+  savePlan(plan) { return this._post({ action: "savePlan", plan }); },
 };
 
 /* =========================================================
@@ -165,7 +179,8 @@ const api = {
 const state = {
   code: null,     // 選択中の製品コード
   input: "",      // kg 入力文字列
-  editingId: null // 編集中の record_id（null=新規）
+  editingId: null, // 編集中の record_id（null=新規）
+  plan: { largeCount: 0, smallCount: 0, hundredCount: 0, previousKg: 0, plannedKg: 0, usedKg: 0, remainingKg: 0 }
 };
 
 // マスター管理: 基準材料ごとに選べる追加材料（calcRecipe の extras キーに対応）
@@ -181,6 +196,8 @@ const newProduct = { group: "main", base: "hakusai", tareType: "A", timeSlot: nu
  * 初期化
  * ========================================================= */
 startClock($("clock"));
+initMaterialPlan();
+loadMaterialPlan();
 
 // 製品ボタンのクリックは委譲（再描画しても効く）
 function onProductGridClick(e) {
@@ -205,6 +222,91 @@ initMasterForm();
 
 // 製品マスタを GAS から読み込んでボタンを描画
 loadProducts();
+
+/* 今日の白菜予定。樽重量は確定仕様（大樽210 / 小樽90 / 100樽35kg）。 */
+const BARREL_KG = { largeCount: 210, smallCount: 90, hundredCount: 35 };
+
+function initMaterialPlan() {
+  $("materialPlan").querySelectorAll(".barrel-row").forEach(row => {
+    row.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-step]");
+      if (!btn) return;
+      const field = row.dataset.planField;
+      state.plan[field] = Math.max(0, (Number(state.plan[field]) || 0) + Number(btn.dataset.step));
+      renderMaterialPlan();
+    });
+  });
+  $("previousKg").addEventListener("input", () => {
+    state.plan.previousKg = Math.max(0, Number($("previousKg").value) || 0);
+    renderMaterialPlan(false);
+  });
+  $("savePlanBtn").addEventListener("click", saveMaterialPlan);
+}
+
+function localPlannedKg() {
+  return round(
+    state.plan.largeCount * BARREL_KG.largeCount +
+    state.plan.smallCount * BARREL_KG.smallCount +
+    state.plan.hundredCount * BARREL_KG.hundredCount +
+    (Number(state.plan.previousKg) || 0), 1);
+}
+
+function renderMaterialPlan(syncInput = true) {
+  $("largeCount").textContent = state.plan.largeCount;
+  $("smallCount").textContent = state.plan.smallCount;
+  $("hundredCount").textContent = state.plan.hundredCount;
+  if (syncInput) $("previousKg").value = state.plan.previousKg || "";
+  const planned = localPlannedKg();
+  state.plan.plannedKg = planned;
+  const remaining = round(planned - (Number(state.plan.usedKg) || 0), 1);
+  state.plan.remainingKg = remaining;
+  $("plannedKg").textContent = `${planned} kg`;
+  $("remainingPlanned").textContent = `${planned} kg`;
+  $("usedKg").textContent = `${state.plan.usedKg || 0} kg`;
+  $("remainingKg").textContent = `${remaining} kg`;
+  $("remainingKg").classList.toggle("negative", remaining < 0);
+}
+
+async function loadMaterialPlan() {
+  if (!api.configured()) { renderMaterialPlan(); return; }
+  try {
+    const p = await api.getPlan();
+    state.plan = {
+      largeCount: Number(p.large_count) || 0,
+      smallCount: Number(p.small_count) || 0,
+      hundredCount: Number(p.hundred_count) || 0,
+      previousKg: Number(p.previous_kg) || 0,
+      plannedKg: Number(p.planned_kg) || 0,
+      usedKg: Number(p.used_kg) || 0,
+      remainingKg: Number(p.remaining_kg) || 0,
+    };
+    renderMaterialPlan();
+  } catch (e) {
+    showToast("白菜予定を読み込めません: " + e.message, true);
+    renderMaterialPlan();
+  }
+}
+
+async function saveMaterialPlan() {
+  if (!api.configured()) { showToast("GAS未接続のため保存できません", true); return; }
+  const btn = $("savePlanBtn");
+  btn.disabled = true;
+  try {
+    const p = await api.savePlan({
+      large_count: state.plan.largeCount,
+      small_count: state.plan.smallCount,
+      hundred_count: state.plan.hundredCount,
+      previous_kg: state.plan.previousKg,
+    });
+    state.plan.usedKg = Number(p.used_kg) || 0;
+    renderMaterialPlan();
+    showToast("今日の白菜予定を保存しました");
+  } catch (e) {
+    showToast("白菜予定の保存に失敗: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 /* 右ペインの中身は最初の製品選択時に一度だけ構築 */
 let rightBuilt = false;
@@ -303,6 +405,7 @@ async function onSubmit() {
       state.input = "";
       recalc();
     }
+    await loadMaterialPlan();
   } catch (e) {
     showToast("保存に失敗しました: " + e.message, true);
     btn.disabled = false;
@@ -451,6 +554,7 @@ function initMasterForm() {
     });
   });
   $("np-name").addEventListener("input", updatePreview);
+  $("np-content-g").addEventListener("input", updatePreview);
   renderExtras();
 }
 
@@ -479,6 +583,7 @@ function updatePreview() {
   const tmp = {
     code: "_preview", name: $("np-name").value || "新製品", group: newProduct.group,
     base: newProduct.base, tareType: newProduct.tareType, timeSlot: newProduct.timeSlot,
+    contentG: Number($("np-content-g").value) || null,
     extras: { ...newProduct.extras }
   };
   const r = calcRecipe(tmp, sample);
@@ -493,7 +598,9 @@ async function onAddProduct() {
   if (!api.configured()) { showToast("GAS未接続のため追加できません", true); return; }
   const product = {
     name, group: newProduct.group, base: newProduct.base,
-    tareType: newProduct.tareType, timeSlot: newProduct.timeSlot, extras: { ...newProduct.extras }
+    tareType: newProduct.tareType, timeSlot: newProduct.timeSlot,
+    contentG: Number($("np-content-g").value) || null,
+    extras: { ...newProduct.extras }
   };
   const btn = $("addProductBtn");
   btn.disabled = true;
@@ -501,6 +608,7 @@ async function onAddProduct() {
     const added = await api.addProduct(product);
     showToast(`製品を追加しました: ${added.name}`);
     $("np-name").value = "";
+    $("np-content-g").value = "";
     await loadProducts();   // 計算画面のボタンを再描画
     renderMasterList();     // 一覧更新
     updatePreview();
@@ -525,11 +633,31 @@ function renderMasterList() {
       <div class="mc-main">
         <div class="mc-name">${p.name}</div>
         <div class="mc-sub">${p.group === "yamada" ? "ヤマダ ・ " : ""}${BASE_LABEL[p.base]}基準 ・ ${p.tareType}タレ${slot}${exLabel}</div>
+        <div class="content-edit"><input type="number" min="1" step="1" inputmode="numeric" value="${p.contentG || ""}" placeholder="内容量"><span>g</span><button type="button" data-save-content="${p.code}">保存</button></div>
       </div>
       <button class="btn-del" data-del="${p.code}" data-name="${p.name}">削除</button>
     </div>`;
   }).join("");
+  box.querySelectorAll("[data-save-content]").forEach(b => b.addEventListener("click", () => onSaveProductContent(b)));
   box.querySelectorAll(".btn-del").forEach(b => b.addEventListener("click", () => onDeleteProduct(b)));
+}
+
+async function onSaveProductContent(btn) {
+  const input = btn.parentElement.querySelector("input");
+  const contentG = Number(input.value);
+  if (!(contentG > 0)) { showToast("内容量を1g以上で入力してください", true); return; }
+  btn.disabled = true;
+  try {
+    await api.updateProductContent(btn.dataset.saveContent, contentG);
+    const p = findProduct(btn.dataset.saveContent);
+    if (p) p.contentG = contentG;
+    if (state.code === btn.dataset.saveContent) recalc();
+    showToast("商品内容量を保存しました");
+  } catch (e) {
+    showToast("内容量の保存に失敗: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function onDeleteProduct(btn) {

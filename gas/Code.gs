@@ -23,14 +23,14 @@ var HEADERS = [
   "record_id", "date", "product_name", "product_code", "time_slot", "batch_no",
   "base_material", "base_kg", "tare_type", "tare_kg", "daikon_kg", "ninjin_kg",
   "nira_kg", "konbu", "daikara_powder_g", "sugar_kg", "sesame_oil", "sesame",
-  "created_at", "updated_at"
+  "planned_units", "created_at", "updated_at"
 ];
 
 // 編集時にフロントから更新を許可する列（id/date/code/batch_no/created_at は不変）
 var EDITABLE = [
   "product_name", "time_slot", "base_material", "base_kg", "tare_type", "tare_kg",
   "daikon_kg", "ninjin_kg", "nira_kg", "konbu", "daikara_powder_g", "sugar_kg",
-  "sesame_oil", "sesame"
+  "sesame_oil", "sesame", "planned_units"
 ];
 
 // 製品マスタ（実行時に追加・論理削除する。係数は recipes.js が正本のまま）
@@ -38,8 +38,12 @@ var PRODUCTS_SHEET = "products";
 var PRODUCT_HEADERS = [
   "code", "name", "order", "group", "base", "tare_type", "time_slot",
   "ex_daikara", "ex_changja_daikara", "ex_sesame_oil", "ex_sesame", "ex_sugar",
-  "active"
+  "content_g", "active"
 ];
+
+var PLANS_SHEET = "daily_plans";
+var PLAN_HEADERS = ["date", "large_count", "small_count", "hundred_count", "previous_kg", "planned_kg", "updated_at"];
+var BARREL_KG = { large_count: 210, small_count: 90, hundred_count: 35 };
 
 /* ============ スプレッドシート / シート取得 ============ */
 function getSpreadsheet_() {
@@ -57,6 +61,7 @@ function getRecordsSheet_() {
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     sh.setFrozenRows(1);
   }
+  ensureHeaders_(sh, HEADERS);
   return sh;
 }
 
@@ -64,6 +69,7 @@ function getRecordsSheet_() {
 function setup() {
   getRecordsSheet_();
   getProductsSheet_();
+  getPlansSheet_();
 }
 
 /* ============ 製品マスタ（products シート） ============ */
@@ -75,7 +81,28 @@ function getProductsSheet_() {
     sh.getRange(1, 1, 1, PRODUCT_HEADERS.length).setValues([PRODUCT_HEADERS]);
     sh.setFrozenRows(1);
   }
+  ensureHeaders_(sh, PRODUCT_HEADERS);
   return sh;
+}
+
+function getPlansSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(PLANS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(PLANS_SHEET);
+    sh.getRange(1, 1, 1, PLAN_HEADERS.length).setValues([PLAN_HEADERS]);
+    sh.setFrozenRows(1);
+  }
+  ensureHeaders_(sh, PLAN_HEADERS);
+  return sh;
+}
+
+/* 既存シートへ新しい列だけを末尾追加する安全なマイグレーション。 */
+function ensureHeaders_(sh, required) {
+  var lastCol = Math.max(sh.getLastColumn(), 1);
+  var current = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  var missing = required.filter(function (h) { return current.indexOf(h) < 0; });
+  if (missing.length) sh.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
 }
 
 /* 有効(active)な製品を order 順で返す（recipes.js と同じ形に整形） */
@@ -106,6 +133,7 @@ function rowToProduct_(headers, row) {
     base: String(m.base),
     tareType: String(m.tare_type),
     timeSlot: m.time_slot ? String(m.time_slot) : null,
+    contentG: Number(m.content_g) || null,
     extras: {
       daikara: m.ex_daikara === true,
       changjaDaikara: m.ex_changja_daikara === true,
@@ -125,6 +153,7 @@ function productToRow_(map, p, order, active) {
     base: p.base, tare_type: p.tareType, time_slot: p.timeSlot || "",
     ex_daikara: !!ex.daikara, ex_changja_daikara: !!ex.changjaDaikara,
     ex_sesame_oil: !!ex.sesameOil, ex_sesame: !!ex.sesame, ex_sugar: !!ex.sugar,
+    content_g: Number(p.contentG) || "",
     active: active
   };
   var arr = [];
@@ -179,6 +208,23 @@ function deleteProduct_(code) {
   throw new Error("製品コードが見つかりません: " + code);
 }
 
+function updateProductContent_(code, contentG) {
+  var grams = Number(contentG);
+  if (!(grams > 0)) throw new Error("内容量は1g以上で入力してください");
+  var sh = getProductsSheet_();
+  var map = headerMap_(sh);
+  var last = sh.getLastRow();
+  if (last < 2) throw new Error("製品なし");
+  var codes = sh.getRange(2, map["code"], last - 1, 1).getValues();
+  for (var i = 0; i < codes.length; i++) {
+    if (String(codes[i][0]) === String(code)) {
+      sh.getRange(i + 2, map["content_g"]).setValue(grams);
+      return { code: code, content_g: grams };
+    }
+  }
+  throw new Error("製品コードが見つかりません: " + code);
+}
+
 /* 初回シード: products が空のときだけ、渡された初期製品を投入（冪等） */
 function seedProducts_(products) {
   var sh = getProductsSheet_();
@@ -220,6 +266,9 @@ function doGet(e) {
     if (action === "products") { // 有効な製品マスタ一覧
       return json_({ ok: true, data: listProducts_() });
     }
+    if (action === "plan") {
+      return json_({ ok: true, data: getDailyPlan_(e.parameter.date) });
+    }
     return json_({ ok: false, error: "unknown action: " + action });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -244,11 +293,98 @@ function doPost(e) {
     if (body.action === "seedProducts") { // 初回のみ recipes.js の初期製品を投入
       return json_({ ok: true, data: seedProducts_(body.products) });
     }
+    if (body.action === "updateProductContent") {
+      return json_({ ok: true, data: updateProductContent_(body.code, body.content_g) });
+    }
+    if (body.action === "savePlan") {
+      return json_({ ok: true, data: saveDailyPlan_(body.plan) });
+    }
     return json_({ ok: false, error: "unknown action: " + body.action });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
 }
+
+/* ============ 日別の白菜予定 / 使用済み / 残量 ============ */
+function getDailyPlan_(dateFilter) {
+  var ymd = dateFilter ? toYmd_(dateFilter) : nowYmdTokyo_();
+  var sh = getPlansSheet_();
+  var map = headerMap_(sh);
+  var plan = { date: ymdToSlash_(ymd), large_count: 0, small_count: 0, hundred_count: 0, previous_kg: 0, planned_kg: 0 };
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var values = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (toYmd_(values[r][map["date"] - 1]) !== ymd) continue;
+      plan.large_count = Number(values[r][map["large_count"] - 1]) || 0;
+      plan.small_count = Number(values[r][map["small_count"] - 1]) || 0;
+      plan.hundred_count = Number(values[r][map["hundred_count"] - 1]) || 0;
+      plan.previous_kg = Number(values[r][map["previous_kg"] - 1]) || 0;
+      plan.planned_kg = Number(values[r][map["planned_kg"] - 1]) || 0;
+      break;
+    }
+  }
+  plan.used_kg = usedHakusaiKg_(ymd);
+  plan.remaining_kg = round1_(plan.planned_kg - plan.used_kg);
+  return plan;
+}
+
+function saveDailyPlan_(input) {
+  input = input || {};
+  var large = nonNegativeInt_(input.large_count);
+  var small = nonNegativeInt_(input.small_count);
+  var hundred = nonNegativeInt_(input.hundred_count);
+  var previous = Math.max(0, Number(input.previous_kg) || 0);
+  var planned = round1_(large * BARREL_KG.large_count + small * BARREL_KG.small_count + hundred * BARREL_KG.hundred_count + previous);
+  var ymd = nowYmdTokyo_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var sh = getPlansSheet_();
+    var map = headerMap_(sh);
+    var last = sh.getLastRow();
+    var rowIndex = -1;
+    if (last >= 2) {
+      var dates = sh.getRange(2, map["date"], last - 1, 1).getValues();
+      for (var i = 0; i < dates.length; i++) {
+        if (toYmd_(dates[i][0]) === ymd) { rowIndex = i + 2; break; }
+      }
+    }
+    var full = {
+      date: ymdToDate_(ymd), large_count: large, small_count: small,
+      hundred_count: hundred, previous_kg: previous, planned_kg: planned, updated_at: new Date()
+    };
+    if (rowIndex < 0) {
+      var row = [];
+      PLAN_HEADERS.forEach(function (h) { row[map[h] - 1] = full[h]; });
+      sh.appendRow(row);
+    } else {
+      PLAN_HEADERS.forEach(function (h) { sh.getRange(rowIndex, map[h]).setValue(full[h]); });
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  return getDailyPlan_(ymd);
+}
+
+function usedHakusaiKg_(ymd) {
+  var sh = getRecordsSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var map = headerMap_(sh);
+  var values = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
+  var total = 0;
+  for (var i = 0; i < values.length; i++) {
+    if (toYmd_(values[i][map["date"] - 1]) !== ymd) continue;
+    if (String(values[i][map["base_material"] - 1]) !== "白菜") continue;
+    total += Number(values[i][map["base_kg"] - 1]) || 0;
+  }
+  return round1_(total);
+}
+
+function nonNegativeInt_(v) { return Math.max(0, Math.floor(Number(v) || 0)); }
+function round1_(v) { return Math.round(Number(v) * 10) / 10; }
+function ymdToSlash_(ymd) { return ymd.slice(0, 4) + "/" + ymd.slice(4, 6) + "/" + ymd.slice(6, 8); }
 
 /* ============ 一覧（任意で日付フィルタ） ============ */
 function listRecords_(dateFilter) {
@@ -309,6 +445,7 @@ function createRecord_(rec) {
       sugar_kg: numOrBlank_(rec.sugar_kg),
       sesame_oil: rec.sesame_oil || "",
       sesame: rec.sesame || "",
+      planned_units: numOrBlank_(rec.planned_units),
       created_at: now,
       updated_at: now
     };
