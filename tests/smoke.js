@@ -50,4 +50,39 @@ const sheet = {
 };
 assert.equal(gasContext.nextBatchNo_(sheet, { date: 2, product_code: 4, batch_no: 6 }, "20260622", "nakakara_am"), 4);
 
+const yamada = PRODUCTS.filter(product => product.group === "yamada");
+assert.deepEqual(yamada.map(product => product.contentG), [350, 200, 350, 200]);
+assert.deepEqual(yamada.map(product => product.code), [
+  "yamada_hakusai_350", "yamada_hakusai_200", "yamada_daikon_350", "yamada_daikon_200"
+]);
+assert.equal(calcRecipe(yamada[0], 100).plannedUnits, 417);
+assert.equal(calcRecipe(yamada[1], 100).plannedUnits, 730);
+assert.equal(calcRecipe(yamada[2], 100).plannedUnits, 314);
+assert.equal(calcRecipe(yamada[3], 100).plannedUnits, 550);
+assert.match(app, /予定数（内容量/);
+assert.match(gas, /function migrateYamadaProducts_/);
+
+const productHeaders = Array.from(gasContext.PRODUCT_HEADERS);
+const productMap = Object.fromEntries(productHeaders.map((header, index) => [header, index + 1]));
+const deactivated = [];
+const appended = [];
+const productSheet = {
+  getLastRow: () => 3,
+  getLastColumn: () => productHeaders.length,
+  getRange: (row, column, rowCount) => ({
+    getValues: () => rowCount ? [["yamada_hakusai"], ["yamada_daikon"]] : [],
+    setValue: value => deactivated.push([row, column, value]),
+    setValues: () => { throw new Error("unexpected existing variant"); },
+  }),
+  appendRow: row => appended.push(row),
+};
+gasContext.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+gasContext.getProductsSheet_ = () => productSheet;
+gasContext.headerMap_ = () => productMap;
+gasContext.listProducts_ = () => ["migrated"];
+const migration = gasContext.migrateYamadaProducts_();
+assert.equal(migration.migrated, 4);
+assert.equal(deactivated.length, 2);
+assert.equal(appended.length, 4);
+
 console.log(`Smoke tests passed (${cases.length} formulas, ${new Set(ids).size} DOM references).`);

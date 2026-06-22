@@ -48,7 +48,7 @@ function recipeRows(r) {
   if (r.sesameOil) rows.push({ label: "ごま油", value: r.sesameOil, kind: "guide" });
   if (r.sesame)    rows.push({ label: "ごま", value: r.sesame, kind: "guide" });
   rows.push({
-    label: "予定数",
+    label: r.contentG ? `予定数（内容量 ${r.contentG}g）` : "予定数",
     value: r.plannedUnits == null ? "内容量を設定してください" : `${r.plannedUnits} 個`,
     kind: "planned"
   });
