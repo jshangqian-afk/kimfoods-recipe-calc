@@ -14,6 +14,9 @@ for (const [base, kg, contentG, expected] of cases) {
   const product = { ...PRODUCTS.find(p => p.base === base), contentG };
   assert.equal(calcRecipe(product, kg).plannedUnits, expected);
 }
+const configuredProduct = { ...PRODUCTS.find(product => product.base === "hakusai"), contentG: 203 };
+assert.equal(calcRecipe(configuredProduct, 0).plannedUnits, 0);
+assert.equal(calcRecipe({ ...configuredProduct, contentG: null }, 100).plannedUnits, null);
 
 const app = fs.readFileSync(path.join(__dirname, "../app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
