@@ -153,6 +153,7 @@ const api = {
 
   create(payload) { return this._post({ action: "create", record: payload }); },
   update(recordId, payload) { return this._post({ action: "update", record_id: recordId, record: payload }); },
+  deleteRecord(recordId) { return this._post({ action: "delete", record_id: recordId }); },
 
   async getProducts() {
     const res = await fetch(`${CONFIG.GAS_URL}?action=products`, { method: "GET" });
@@ -449,12 +450,39 @@ function renderRecords(records) {
         <div class="rc-sub">${slot}${r.base_material} ${r.base_kg}kg ・ ${r.tare_type}タレ ${r.tare_kg}kg<br>${r.record_id}</div>
       </div>
       <div class="rc-kg">${r.base_kg}<span style="font-size:13px;color:var(--muted);">kg</span></div>
-      <button class="btn-ghost" data-edit="${r.record_id}" data-code="${r.product_code}" data-kg="${r.base_kg}">編集</button>
+      <div class="rc-actions">
+        <button class="btn-ghost" data-edit="${r.record_id}" data-code="${r.product_code}" data-kg="${r.base_kg}">編集</button>
+        <button class="btn-delete-record" data-delete-record="${r.record_id}" data-name="${r.product_name}">削除</button>
+      </div>
     </div>`;
   }).join("");
 
   body.querySelectorAll("[data-edit]").forEach(btn =>
     btn.addEventListener("click", () => startEdit(btn.dataset.edit, btn.dataset.code, btn.dataset.kg)));
+  body.querySelectorAll("[data-delete-record]").forEach(btn =>
+    btn.addEventListener("click", () => onDeleteRecord(btn)));
+}
+
+async function onDeleteRecord(btn) {
+  if (!btn.classList.contains("confirm")) {
+    btn.classList.add("confirm");
+    btn.textContent = "本当に削除？";
+    setTimeout(() => {
+      if (!btn.isConnected) return;
+      btn.classList.remove("confirm");
+      btn.textContent = "削除";
+    }, 3000);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await api.deleteRecord(btn.dataset.deleteRecord);
+    showToast(`削除しました: ${btn.dataset.name}`);
+    await Promise.all([openRecords(), loadMaterialPlan()]);
+  } catch (e) {
+    showToast("削除に失敗しました: " + e.message, true);
+    btn.disabled = false;
+  }
 }
 
 function startEdit(recordId, code, kg) {
