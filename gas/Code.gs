@@ -284,6 +284,9 @@ function doPost(e) {
     if (body.action === "update") {
       return json_({ ok: true, data: updateRecord_(body.record_id, body.record) });
     }
+    if (body.action === "delete") {
+      return json_({ ok: true, data: deleteRecord_(body.record_id) });
+    }
     if (body.action === "addProduct") {
       return json_({ ok: true, data: addProduct_(body.product) });
     }
@@ -422,7 +425,7 @@ function createRecord_(rec) {
     var ymd = nowYmdTokyo_();                   // 営業日はサーバ(JST)基準。クライアントTZに依存しない
     var dateObj = ymdToDate_(ymd);
 
-    var batchNo = countSameDayProduct_(sh, map, ymd, rec.product_code) + 1;
+    var batchNo = nextBatchNo_(sh, map, ymd, rec.product_code);
     var recordId = makeUniqueId_(sh, map, ymd, rec.product_code, batchNo);
     var now = new Date();
 
@@ -491,17 +494,43 @@ function updateRecord_(recordId, rec) {
   return { record_id: recordId, batch_no: batchNo, product_name: productName };
 }
 
+/* ============ 削除（record_id で1行のみ） ============ */
+function deleteRecord_(recordId) {
+  if (!recordId) throw new Error("record_id は必須です");
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var sh = getRecordsSheet_();
+    var map = headerMap_(sh);
+    var rowIndex = findRowById_(sh, map, recordId);
+    if (rowIndex < 0) throw new Error("record_id が見つかりません: " + recordId);
+    var deleted = {
+      record_id: recordId,
+      product_name: sh.getRange(rowIndex, map["product_name"]).getValue(),
+      base_material: sh.getRange(rowIndex, map["base_material"]).getValue(),
+      base_kg: sh.getRange(rowIndex, map["base_kg"]).getValue()
+    };
+    sh.deleteRow(rowIndex);
+    return deleted;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* ============ 補助 ============ */
-function countSameDayProduct_(sh, map, ymd, code) {
+function nextBatchNo_(sh, map, ymd, code) {
   var last = sh.getLastRow();
-  if (last < 2) return 0;
+  if (last < 2) return 1;
   var dates = sh.getRange(2, map["date"], last - 1, 1).getValues();
   var codes = sh.getRange(2, map["product_code"], last - 1, 1).getValues();
-  var n = 0;
+  var batches = sh.getRange(2, map["batch_no"], last - 1, 1).getValues();
+  var maxBatch = 0;
   for (var i = 0; i < dates.length; i++) {
-    if (toYmd_(dates[i][0]) === ymd && String(codes[i][0]) === String(code)) n++;
+    if (toYmd_(dates[i][0]) === ymd && String(codes[i][0]) === String(code)) {
+      maxBatch = Math.max(maxBatch, Number(batches[i][0]) || 0);
+    }
   }
-  return n;
+  return maxBatch + 1;
 }
 
 function makeUniqueId_(sh, map, ymd, code, batchNo) {
