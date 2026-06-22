@@ -29,11 +29,16 @@ body {
   color: var(--text);
   -webkit-text-size-adjust: 100%;
 }
-button { font-family: inherit; cursor: pointer; border: none; }
+button { font-family: inherit; cursor: pointer; border: none; touch-action: manipulation; }
+input { touch-action: manipulation; }
 h1, h2, h3 { font-weight: 700; }
 
 /* ============ レイアウト（2ペイン） ============ */
-.app { display: flex; height: 100vh; }
+.app {
+  display: flex; height: 100vh; height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
 
 .left {
   width: 42%; max-width: 460px; min-width: 320px;
@@ -65,18 +70,18 @@ h1, h2, h3 { font-weight: 700; }
 
 /* ============ 今日の白菜予定 / 残量 ============ */
 .material-plan { background: #f8fafc; border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 18px; }
-.barrel-row { display: grid; grid-template-columns: 1fr 42px 38px 42px; gap: 7px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.barrel-row { display: grid; grid-template-columns: 1fr 46px 38px 46px; gap: 7px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .barrel-row > div { display: flex; flex-direction: column; }
 .barrel-row b { font-size: 15px; }
 .barrel-row small { font-size: 11px; color: var(--muted); }
-.barrel-row button { height: 38px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--primary-dark); font-size: 22px; font-weight: 700; }
+.barrel-row button { min-width: 46px; height: 46px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--primary-dark); font-size: 24px; font-weight: 700; }
 .barrel-row > span { text-align: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .previous-row { display: grid; grid-template-columns: 1fr 100px 24px; gap: 7px; align-items: center; padding: 10px 0; font-size: 14px; font-weight: 700; }
-.previous-row input { min-width: 0; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font-size: 18px; text-align: right; }
+.previous-row input { min-width: 0; height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font-size: 18px; text-align: right; }
 .plan-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 2px; border-top: 1px solid var(--line); }
 .plan-total span { color: var(--muted); font-size: 14px; }
 .plan-total strong { font-size: 24px; color: var(--primary-dark); }
-.btn-plan-save { width: 100%; height: 46px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 16px; font-weight: 700; }
+.btn-plan-save { width: 100%; height: 50px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 16px; font-weight: 700; }
 .btn-plan-save:disabled { background: #cbd5e1; }
 .remaining-card { margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
 .remaining-card > div { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 13px; border-bottom: 1px solid var(--line); }
@@ -149,7 +154,7 @@ h1, h2, h3 { font-weight: 700; }
 .btn-update:active { background: #d97706; }
 .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 14px; height: 60px; font-size: 17px; font-weight: 600; padding: 0 22px; }
 .btn-ghost:active { background: #eef2f7; }
-.btn-link { background: none; color: var(--primary-dark); font-size: 15px; font-weight: 700; padding: 8px 10px; }
+.btn-link { min-height: 44px; background: none; color: var(--primary-dark); font-size: 15px; font-weight: 700; padding: 8px 10px; }
 
 /* ============ 編集モードバナー ============ */
 .edit-banner {
@@ -165,9 +170,11 @@ h1, h2, h3 { font-weight: 700; }
 .drawer-mask { position: fixed; inset: 0; background: rgba(17,24,39,.4); opacity: 0; pointer-events: none; transition: .2s; z-index: 40; }
 .drawer-mask.show { opacity: 1; pointer-events: auto; }
 .drawer {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 520px; max-width: 92vw;
+  position: fixed; top: 0; right: 0; height: 100vh; height: 100dvh; width: 520px; max-width: 92vw;
   background: var(--bg); border-left: 1px solid var(--line); transform: translateX(100%);
   transition: transform .25s ease; z-index: 41; display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top); padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .drawer.show { transform: translateX(0); }
 .drawer .dhead { padding: 16px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; background: var(--card); }
@@ -183,13 +190,13 @@ h1, h2, h3 { font-weight: 700; }
 .rec-card .rc-kg { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .rec-card .btn-ghost { height: 44px; padding: 0 16px; }
 .rec-card .rc-actions { display: flex; flex-direction: column; gap: 7px; }
-.btn-delete-record { height: 38px; padding: 0 12px; border-radius: 11px; border: 1px solid #fecaca; background: var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 700; }
+.btn-delete-record { min-height: 44px; padding: 0 12px; border-radius: 11px; border: 1px solid #fecaca; background: var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 700; }
 .btn-delete-record.confirm { background: var(--danger); color: #fff; border-color: var(--danger); }
 .btn-delete-record:disabled { opacity: .55; }
 
 /* ============ トースト ============ */
 .toast {
-  position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(20px);
+  position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
   background: #111827; color: #fff; padding: 15px 24px; border-radius: 999px;
   font-size: 16px; font-weight: 600; opacity: 0; pointer-events: none; transition: .25s ease;
   max-width: 92vw; text-align: center; z-index: 100;
@@ -236,10 +243,10 @@ h1, h2, h3 { font-weight: 700; }
 .master-card .mc-name { font-size: 16px; font-weight: 700; }
 .master-card .mc-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .master-card .content-edit { display: flex; align-items: center; gap: 5px; margin-top: 8px; }
-.master-card .content-edit input { width: 86px; height: 36px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; font-size: 16px; text-align: right; }
-.master-card .content-edit button { height: 36px; padding: 0 10px; border-radius: 9px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; }
+.master-card .content-edit input { width: 86px; height: 44px; border: 1px solid var(--line); border-radius: 9px; padding: 0 8px; font-size: 16px; text-align: right; }
+.master-card .content-edit button { min-height: 44px; padding: 0 12px; border-radius: 9px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; }
 .master-card .btn-del {
-  height: 40px; padding: 0 14px; border-radius: 10px; background: var(--danger-soft);
+  min-height: 44px; padding: 0 14px; border-radius: 10px; background: var(--danger-soft);
   color: var(--danger); border: 1px solid #fecaca; font-size: 14px; font-weight: 700;
 }
 .master-card .btn-del:active { background: #fee2e2; }
@@ -251,7 +258,7 @@ h1, h2, h3 { font-weight: 700; }
 /* ============ 縦向き / 狭い画面 → 上下2段 ============ */
 @media (max-width: 880px), (orientation: portrait) {
   html, body { overflow: auto; }
-  .app { flex-direction: column; height: auto; min-height: 100vh; }
+  .app { flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; }
   .left { width: 100%; max-width: none; min-width: 0; border-right: none; border-bottom: 1px solid var(--line); }
   .right .body { grid-template-columns: 1fr; overflow: visible; }
   .pane-col .result-list { overflow: visible; }
