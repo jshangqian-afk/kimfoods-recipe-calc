@@ -114,7 +114,8 @@ function calcPlannedUnits(product, baseKg) {
   const kg = parseFloat(baseKg) || 0;
   const contentG = Number(product && product.contentG) || 0;
   const multiplier = product && COEFFICIENTS.yield_multiplier[product.base];
-  if (!(kg > 0) || !(contentG > 0) || !multiplier) return null;
+  if (!(contentG > 0) || !multiplier) return null;
+  if (!(kg > 0)) return 0;
   return Math.floor((kg * multiplier) / (contentG / 1000));
 }
 
