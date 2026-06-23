@@ -30,7 +30,7 @@ const staticIds = [...html.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
 const duplicates = [...new Set(staticIds.filter((id, index) => staticIds.indexOf(id) !== index))];
 assert.deepEqual(duplicates, [], `Duplicate DOM IDs: ${duplicates.join(", ")}`);
 
-assert.match(app, /largeCount: 210/);
+assert.match(app, /largeCount: 190/);
 assert.match(app, /smallCount: 90/);
 assert.match(app, /hundredCount: 35/);
 assert.match(app, /deleteRecord\(recordId\)/);
@@ -43,6 +43,16 @@ assert.match(gas, /function nextBatchNo_/);
 const gasContext = { console, Date, Math };
 vm.createContext(gasContext);
 vm.runInContext(gas, gasContext);
+assert.equal(gasContext.BARREL_KG.large_count, 190);
+const planMap = { date: 1, large_count: 2, small_count: 3, hundred_count: 4, previous_kg: 5, planned_kg: 6 };
+gasContext.getPlansSheet_ = () => ({
+  getLastRow: () => 2,
+  getLastColumn: () => 7,
+  getRange: () => ({ getValues: () => [["2026/06/23", 1, 0, 0, 0, 210, new Date()]] }),
+});
+gasContext.headerMap_ = () => planMap;
+gasContext.usedHakusaiKg_ = () => 0;
+assert.equal(gasContext.getDailyPlan_("2026/06/23").planned_kg, 190);
 const columns = {
   2: [["2026/06/22"], ["2026/06/22"], ["2026/06/22"]],
   4: [["nakakara_am"], ["nakakara_am"], ["other"]],
