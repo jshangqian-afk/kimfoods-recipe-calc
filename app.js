@@ -224,8 +224,8 @@ initMasterForm();
 // 製品マスタを GAS から読み込んでボタンを描画
 loadProducts();
 
-/* 今日の白菜予定。樽重量は確定仕様（大樽210 / 小樽90 / 100樽35kg）。 */
-const BARREL_KG = { largeCount: 210, smallCount: 90, hundredCount: 35 };
+/* 今日の白菜予定。樽重量は確定仕様（大樽190 / 小樽90 / 100樽35kg）。 */
+const BARREL_KG = { largeCount: 190, smallCount: 90, hundredCount: 35 };
 
 function initMaterialPlan() {
   $("materialPlan").querySelectorAll(".barrel-row").forEach(row => {

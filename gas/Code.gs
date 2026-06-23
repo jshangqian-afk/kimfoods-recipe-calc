@@ -43,7 +43,7 @@ var PRODUCT_HEADERS = [
 
 var PLANS_SHEET = "daily_plans";
 var PLAN_HEADERS = ["date", "large_count", "small_count", "hundred_count", "previous_kg", "planned_kg", "updated_at"];
-var BARREL_KG = { large_count: 210, small_count: 90, hundred_count: 35 };
+var BARREL_KG = { large_count: 190, small_count: 90, hundred_count: 35 };
 
 /* ============ スプレッドシート / シート取得 ============ */
 function getSpreadsheet_() {
@@ -363,10 +363,15 @@ function getDailyPlan_(dateFilter) {
       plan.small_count = Number(values[r][map["small_count"] - 1]) || 0;
       plan.hundred_count = Number(values[r][map["hundred_count"] - 1]) || 0;
       plan.previous_kg = Number(values[r][map["previous_kg"] - 1]) || 0;
-      plan.planned_kg = Number(values[r][map["planned_kg"] - 1]) || 0;
       break;
     }
   }
+  plan.planned_kg = round1_(
+    plan.large_count * BARREL_KG.large_count +
+    plan.small_count * BARREL_KG.small_count +
+    plan.hundred_count * BARREL_KG.hundred_count +
+    plan.previous_kg
+  );
   plan.used_kg = usedHakusaiKg_(ymd);
   plan.remaining_kg = round1_(plan.planned_kg - plan.used_kg);
   return plan;

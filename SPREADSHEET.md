@@ -56,7 +56,7 @@ record_id	date	product_name	product_code	time_slot	batch_no	base_material	base_k
 | 列名 | 説明 |
 |---|---|
 | date | 対象日 |
-| large_count | 大樽数（210kg/樽） |
+| large_count | 大樽数（190kg/樽） |
 | small_count | 小樽数（90kg/樽） |
 | hundred_count | 100樽数（35kg/樽） |
 | previous_kg | 昨日の残り（kg） |
